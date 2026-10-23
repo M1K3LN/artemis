@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Artemis – Install on glasses</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#EEF3F5;--card:#fff;--text:#172437;--muted:#4E5F73;--line:#C9D5DC;--accent:#9A5A00;--accent-ink:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#172437;--card:#1F3048;--text:#EAF2F4;--muted:#A7B6C4;--line:#2E4562;--accent:#FFB703;--accent-ink:#172437}}
+:root[data-theme="dark"]{--bg:#172437;--card:#1F3048;--text:#EAF2F4;--muted:#A7B6C4;--line:#2E4562;--accent:#FFB703;--accent-ink:#172437}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Atkinson Hyperlegible",system-ui,sans-serif;font-size:17px;line-height:1.45}
+main{max-width:520px;margin:0 auto;padding:28px 16px}
+h1{font-size:28px;margin:0 0 6px}
+p{margin:0 0 16px;color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;display:grid;gap:12px}
+label{display:grid;gap:6px;font-weight:700}
+input{font:inherit;color:inherit;background:transparent;border:1px solid var(--line);border-radius:10px;padding:10px}
+#code{text-transform:uppercase;letter-spacing:.06em}
+button{font:inherit;border-radius:10px;padding:12px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);font-weight:700;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#qr{display:flex;justify-content:center;background:#fff;border-radius:12px;padding:16px}
+#qr:empty{display:none}
+#link{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+#err{color:#E5484D;min-height:1.2em;margin:0}
+</style>
+</head>
+<body>
+<main>
+  <h1>Install Artemis on your glasses</h1>
+  <p>Open this page from your tunnel address, then scan the code with your Meta Ray-Ban Display glasses and confirm on the glasses.</p>
+  <div class="card">
+    <label>Family code <input id="code" maxlength="16" placeholder="PARKTEST26" autocomplete="off" spellcheck="false"></label>
+    <label>Name on the glasses <input id="name" maxlength="24" value="Artemis"></label>
+    <button id="make">Make install code</button>
+    <p id="err" role="alert"></p>
+    <div id="qr" aria-label="Install code"></div>
+    <div id="link"></div>
+  </div>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+$('make').onclick = () => {
+  $('err').textContent = ''; $('qr').innerHTML = ''; $('link').textContent = '';
+  const code = $('code').value.trim().toUpperCase(), name = $('name').value.trim() || 'Artemis';
+  if (location.protocol !== 'https:') return $('err').textContent = 'The glasses only load HTTPS addresses. Open this page from your tunnel address.';
+  if (code && !/^[A-Z0-9]{8,16}$/.test(code)) return $('err').textContent = 'Enter a family code of 8–16 letters or numbers, or leave it empty for the demo.';
+  const appUrl = `${location.origin}/glasses.html?lens=1${code ? '&family=' + code : ''}`;
+  const deep = `fb-viewapp://web_app_deep_link?appName=${encodeURIComponent(name)}&appUrl=${encodeURIComponent(appUrl)}`;
+  if (typeof QRCode === 'undefined') { $('err').textContent = 'The QR library didn’t load. Add the address below in the Meta AI app instead.'; }
+  else new QRCode($('qr'), { text: deep, width: 280, height: 280, correctLevel: QRCode.CorrectLevel.M });
+  $('link').textContent = 'Web app address: ' + appUrl;
+};
+</script>
+</body>
+</html>

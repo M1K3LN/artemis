@@ -1,0 +1,15 @@
+{
+  "name": "artemis",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AR/VR heads-up display that shows a parent where their own children's paired phones are.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

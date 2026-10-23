@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Artemis – Parent HUD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EEF3F5; --panel:rgba(255,255,255,.92); --text:#172437; --muted:#4E5F73;
+  --line:#C9D5DC; --accent:#9A5A00; --accent-ink:#fff; --seg:#DCE5EA;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#172437; --panel:rgba(31,48,72,.92); --text:#EAF2F4; --muted:#A7B6C4;
+  --line:#2E4562; --accent:#FFB703; --accent-ink:#172437; --seg:#24395A;
+}}
+:root[data-theme="dark"]{
+  --bg:#172437; --panel:rgba(31,48,72,.92); --text:#EAF2F4; --muted:#A7B6C4;
+  --line:#2E4562; --accent:#FFB703; --accent-ink:#172437; --seg:#24395A;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font-family:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px;overflow:hidden}
+#app{position:relative;height:100%}
+#gl{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+#gl:active{cursor:grabbing}
+.bar{position:absolute;left:10px;right:10px;top:10px;display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;
+  background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px 10px;backdrop-filter:blur(10px)}
+.brand{font-weight:700;font-size:18px;letter-spacing:.01em;margin-right:4px}
+.seg{display:inline-flex;background:var(--seg);border-radius:9px;padding:2px}
+.seg button{border:0;background:transparent;color:var(--muted);padding:6px 12px;border-radius:7px}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--text);font-weight:700}
+button,input{font:inherit;color:inherit}
+button{background:transparent;border:1px solid var(--line);border-radius:9px;padding:6px 12px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input[type=text]{width:9.5em;background:transparent;border:1px solid var(--line);border-radius:9px;padding:6px 8px;text-transform:uppercase;letter-spacing:.06em}
+.rad{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+.rad input{width:110px;accent-color:var(--accent)}
+.rad output{color:var(--text);min-width:3.4em}
+#liveBox{display:inline-flex;gap:6px;align-items:center}
+#liveBox[hidden]{display:none}
+.spacer{flex:1}
+#status{flex-basis:100%;color:var(--muted);font-size:13px;min-height:1em;overflow-wrap:anywhere}
+#status:empty{display:none}
+#hud{position:absolute;left:10px;bottom:10px;width:min(560px,calc(100% - 20px));height:auto;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="gl" aria-label="3D view. Drag to look around."></canvas>
+  <div class="bar">
+    <span class="brand">Artemis</span>
+    <div class="seg" role="group" aria-label="Data source">
+      <button id="mDemo" aria-pressed="true">Demo</button>
+      <button id="mLive" aria-pressed="false">Live</button>
+    </div>
+    <span id="liveBox" hidden>
+      <input id="code" type="text" maxlength="16" placeholder="Family code" autocomplete="off" spellcheck="false" aria-label="Family code">
+      <button id="gen">New code</button>
+      <button id="connect">Connect</button>
+    </span>
+    <label class="rad">Safe zone <input id="radius" type="range" min="10" max="150" step="5" value="40"><output id="radOut">40 m</output></label>
+    <span class="spacer"></span>
+    <button id="north" title="Face north, then press">Set north</button>
+    <button id="xr" class="primary">Enter AR / VR</button>
+    <div id="status" role="status"></div>
+  </div>
+  <canvas id="hud" width="1024" height="512" aria-hidden="true"></canvas>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const F = '"Atkinson Hyperlegible", system-ui, sans-serif';
+const PALETTE = [0xFF8FB1, 0x7CC6FE, 0xC5E063, 0xB79CED, 0x5FD3B6, 0xFFA552];
+const STALE_MS = 30000;
+let radius = 40, northYaw = 0, demo = true;
+
+/* ---------- three.js scene ---------- */
+const app = $('#app'), glCanvas = $('#gl');
+const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType('local-floor');
+
+const scene = new THREE.Scene();
+const SKY = new THREE.Color(0x172437);
+const fog = new THREE.Fog(0x172437, 45, 160);
+scene.background = SKY; scene.fog = fog;
+
+const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 600);
+camera.position.set(0, 1.6, 0);
+scene.add(camera);
+scene.add(new THREE.HemisphereLight(0xdfefff, 0x203048, 1));
+
+const grid = new THREE.GridHelper(300, 60, 0x3B5B80, 0x253B58);
+scene.add(grid);
+
+const zone = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 128),
+  new THREE.MeshBasicMaterial({ color: 0xFFB703, transparent: true, opacity: 0.55, side: THREE.DoubleSide }));
+zone.rotation.x = -Math.PI / 2;
+scene.add(zone);
+
+/* HUD canvas: shown as a DOM overlay on screens, and as a panel locked to your view in a headset */
+const hud = $('#hud'), hx = hud.getContext('2d');
+const hudTex = new THREE.CanvasTexture(hud);
+const hudMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.28),
+  new THREE.MeshBasicMaterial({ map: hudTex, transparent: true, depthTest: false, depthWrite: false }));
+hudMesh.position.set(0, -0.2, -0.75);
+hudMesh.rotation.x = -0.25;
+hudMesh.renderOrder = 999;
+hudMesh.visible = false;
+camera.add(hudMesh);
+
+/* ---------- helpers ---------- */
+const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+const hex = c => '#' + c.toString(16).padStart(6, '0');
+const fmtDist = d => d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km';
+const fmtTime = t => t ? new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'unknown';
+function rr(x, X, Y, W, H, r) {
+  x.beginPath(); x.moveTo(X + r, Y);
+  x.arcTo(X + W, Y, X + W, Y + H, r); x.arcTo(X + W, Y + H, X, Y + H, r);
+  x.arcTo(X, Y + H, X, Y, r); x.arcTo(X, Y, X + W, Y, r); x.closePath();
+}
+function arrow(x, X, Y, rot, col) {
+  x.save(); x.translate(X, Y); x.rotate(rot); x.fillStyle = col;
+  x.beginPath(); x.moveTo(0, -20); x.lineTo(14, 14); x.lineTo(0, 6); x.lineTo(-14, 14); x.closePath(); x.fill();
+  x.restore();
+}
+function setStatus(t) { $('#status').textContent = t || ''; }
+const fwd = new THREE.Vector3();
+function getCamYaw() { camera.getWorldDirection(fwd); return Math.atan2(-fwd.x, -fwd.z); }
+
+let actx;
+function alertCue() {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+    o.frequency.value = 880;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.5);
+  } catch (e) {}
+  try { navigator.vibrate && navigator.vibrate([120, 60, 120]); } catch (e) {}
+}
+
+/* ---------- kids ---------- */
+const kids = new Map();
+function ensureKid(id, name) {
+  let k = kids.get(id);
+  if (k) { if (name) k.name = name; return k; }
+  const color = PALETTE[kids.size % PALETTE.length];
+  const group = new THREE.Group();
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1, 10, 1, true),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.45 }));
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(0.25, 20, 14), new THREE.MeshBasicMaterial({ color }));
+  orb.position.y = 1.1;
+  const lc = document.createElement('canvas'); lc.width = 384; lc.height = 96;
+  const lt = new THREE.CanvasTexture(lc);
+  const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: lt, transparent: true, depthTest: false }));
+  label.renderOrder = 10;
+  group.add(beam, orb, label);
+  scene.add(group);
+  k = { id, name: name || 'Child', color, e: 0, n: 0, dist: 0, wx: 0, wz: 0, lat: null, lon: null,
+        battery: null, ts: Date.now(), hasFix: false, left: false, outside: false, stale: false,
+        group, beam, orb, label, lc, lt, lastLabel: '', lastOut: null };
+  kids.set(id, k);
+  return k;
+}
+function clearKids() {
+  for (const k of kids.values()) {
+    scene.remove(k.group);
+    k.beam.geometry.dispose(); k.beam.material.dispose();
+    k.orb.geometry.dispose(); k.orb.material.dispose();
+    k.lt.dispose(); k.label.material.dispose();
+  }
+  kids.clear();
+}
+function drawLabel(k, txt) {
+  const x = k.lc.getContext('2d');
+  x.clearRect(0, 0, 384, 96);
+  x.font = '700 36px ' + F;
+  const w = Math.min(376, x.measureText(txt).width + 40);
+  x.fillStyle = k.outside ? 'rgba(229,72,77,.95)' : 'rgba(23,36,55,.88)';
+  rr(x, (384 - w) / 2, 16, w, 64, 18); x.fill();
+  x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(txt, 192, 49, 350);
+  k.lt.needsUpdate = true;
+}
+
+/* ---------- position math ---------- */
+let me = null; // parent's own GPS fix (live mode)
+function toLocal(k) {
+  if (!me || k.lat == null) return;
+  const R = 6371000, d2r = Math.PI / 180;
+  k.n = (k.lat - me.lat) * d2r * R;
+  k.e = (k.lon - me.lon) * d2r * R * Math.cos(me.lat * d2r);
+  k.hasFix = true;
+}
+function updateKids() {
+  const now = Date.now(), c = Math.cos(northYaw), s = Math.sin(northYaw);
+  for (const k of kids.values()) {
+    if (!demo) toLocal(k);
+    k.dist = Math.hypot(k.e, k.n);
+    k.wx = k.e * c - k.n * s;   // rotate east/north into world space using the calibrated north
+    k.wz = -k.e * s - k.n * c;
+    k.group.visible = k.hasFix;
+    k.group.position.set(camera.position.x + k.wx, 0, camera.position.z + k.wz);
+    const h = 2 + k.dist * 0.15;
+    k.beam.scale.y = h; k.beam.position.y = h / 2;
+    const sc = Math.max(1, k.dist * 0.08);
+    k.label.scale.set(2.4 * sc, 0.6 * sc, 1);
+    k.label.position.y = h + 0.5 * sc;
+
+    const outside = k.hasFix && k.dist > radius;
+    const stale = k.left || now - k.ts > STALE_MS;
+    const off = k.wrist === 'off';
+    if ((outside && !k.outside) || (stale && !k.stale) || (off && !k.off)) alertCue();
+    k.outside = outside; k.stale = stale; k.off = off;
+    k.beam.material.opacity = stale ? 0.15 : 0.45;
+    k.orb.material.color.setHex(stale ? 0x6B7B8C : k.color);
+    const txt = k.hasFix ? `${k.name}  ${fmtDist(k.dist)}` : `${k.name}  no GPS yet`;
+    if (txt !== k.lastLabel || outside !== k.lastOut) { k.lastLabel = txt; k.lastOut = outside; drawLabel(k, txt); }
+  }
+}
+
+/* ---------- HUD ---------- */
+function drawHUD(camYaw) {
+  const x = hx, W = 1024, H = 512;
+  x.clearRect(0, 0, W, H);
+  x.fillStyle = 'rgba(23,36,55,.86)'; rr(x, 4, 4, W - 8, H - 8, 30); x.fill();
+  x.strokeStyle = 'rgba(255,183,3,.7)'; x.lineWidth = 3; x.stroke();
+  x.textBaseline = 'middle'; x.textAlign = 'left';
+  x.fillStyle = '#FFB703'; x.font = '700 32px ' + F; x.fillText('Artemis', 36, 52);
+  x.fillStyle = '#A7B6C4'; x.font = '400 24px ' + F;
+  x.fillText(`${demo ? 'Demo' : 'Live'}   |   safe zone ${radius} m`, 190, 53);
+  x.textAlign = 'right';
+  x.fillText(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), W - 36, 53);
+  x.textAlign = 'left';
+
+  const list = [...kids.values()];
+  if (!list.length) {
+    x.fillStyle = '#EAF2F4'; x.font = '400 28px ' + F;
+    x.fillText(demo ? 'Starting demo…' : 'Waiting for a child\u2019s phone to join.', 36, 150);
+    x.fillStyle = '#A7B6C4'; x.font = '400 22px ' + F;
+    if (!demo) x.fillText('Open /child.html on their phone and enter the family code.', 36, 192);
+  }
+  list.slice(0, 4).forEach((k, i) => {
+    const y = 122 + i * 78, alert = k.outside || k.stale || k.off;
+    x.fillStyle = alert ? 'rgba(229,72,77,.28)' : 'rgba(255,255,255,.06)';
+    rr(x, 24, y - 32, 626, 64, 16); x.fill();
+    x.fillStyle = k.stale ? '#6B7B8C' : hex(k.color);
+    x.beginPath(); x.arc(56, y, 13, 0, 7); x.fill();
+    x.fillStyle = '#EAF2F4'; x.font = '700 30px ' + F;
+    x.fillText(k.name, 82, y, 170);
+    x.fillText(k.hasFix ? fmtDist(k.dist) : '–', 266, y);
+    if (k.hasFix) arrow(x, 395, y, -angDiff(Math.atan2(-k.wx, -k.wz), camYaw), alert ? '#FF8A8D' : '#FFB703');
+    const age = Math.max(0, Math.round((Date.now() - k.ts) / 1000));
+    x.fillStyle = '#A7B6C4'; x.font = '400 21px ' + F;
+    x.fillText(`${k.battery != null ? k.battery + '%' : '–'}  ${age < 3 ? 'now' : age + 's ago'}`, 428, y, 120);
+    x.textAlign = 'right'; x.font = '700 22px ' + F;
+    x.fillStyle = k.stale || k.off ? '#FFD166' : k.outside ? '#FF8A8D' : '#7BE0B5';
+    x.fillText(k.stale ? 'Lost' : k.off ? 'Off' : k.outside ? 'Away' : 'OK', 634, y);
+    x.textAlign = 'left';
+  });
+
+  // radar: up = the way you're facing
+  const cx = 842, cy = 268, R = 138, zr = R * 0.7;
+  x.fillStyle = 'rgba(255,183,3,.10)';
+  x.beginPath(); x.moveTo(cx, cy); x.arc(cx, cy, R, -Math.PI / 2 - 0.6, -Math.PI / 2 + 0.6); x.closePath(); x.fill();
+  x.strokeStyle = 'rgba(167,182,196,.35)'; x.lineWidth = 2;
+  for (const f of [1, 0.4]) { x.beginPath(); x.arc(cx, cy, R * f, 0, 7); x.stroke(); }
+  x.strokeStyle = '#FFB703'; x.setLineDash([9, 8]);
+  x.beginPath(); x.arc(cx, cy, zr, 0, 7); x.stroke(); x.setLineDash([]);
+  const nRel = angDiff(northYaw, camYaw);
+  x.fillStyle = '#EAF2F4'; x.font = '700 20px ' + F; x.textAlign = 'center';
+  x.fillText('N', cx - Math.sin(nRel) * (R + 16), cy - Math.cos(nRel) * (R + 16));
+  x.fillStyle = '#EAF2F4';
+  x.beginPath(); x.moveTo(cx, cy - 11); x.lineTo(cx + 8, cy + 8); x.lineTo(cx - 8, cy + 8); x.closePath(); x.fill();
+  const scale = zr / radius;
+  for (const k of list) {
+    if (!k.hasFix) continue;
+    const rel = angDiff(Math.atan2(-k.wx, -k.wz), camYaw), d = Math.min(k.dist * scale, R - 8);
+    x.fillStyle = k.stale ? '#6B7B8C' : hex(k.color);
+    x.beginPath(); x.arc(cx - Math.sin(rel) * d, cy - Math.cos(rel) * d, 10, 0, 7); x.fill();
+  }
+  x.textAlign = 'left';
+
+  const alerts = list.filter(k => k.outside || k.stale || k.off);
+  if (alerts.length) {
+    x.fillStyle = 'rgba(229,72,77,.96)'; rr(x, 24, 438, W - 48, 54, 16); x.fill();
+    x.fillStyle = '#fff'; x.font = '700 26px ' + F;
+    x.fillText(alerts.map(k => k.stale ? `${k.name}: signal lost` : k.off ? `${k.name}'s watch may be off (since ${fmtTime(k.wristTs)})` : `${k.name} is ${fmtDist(k.dist)} away`).join('    '), 46, 466, W - 92);
+  }
+  hudTex.needsUpdate = true;
+}
+
+/* ---------- demo mode ---------- */
+function startDemo() {
+  stopLive(); demo = true; clearKids();
+  [['Maya', 8, 5], ['Leo', -7, 12], ['Ava', 4, -10]].forEach(([name, e, n], i) => {
+    const k = ensureKid('demo' + i, name);
+    Object.assign(k, { e, n, hasFix: true, hd: Math.random() * 6.28, sp: 0.7 + Math.random() * 0.6,
+                       battery: 55 + (Math.random() * 45 | 0), wander: i === 1, removes: i === 2 });
+  });
+  setStatus('Demo: three simulated kids. Leo drifts out of the safe zone; Ava takes her watch off now and then.');
+}
+function stepDemo(dt) {
+  for (const k of kids.values()) {
+    if (k.removes) { // Ava takes her watch off for 30 s every 90 s and leaves it on a bench
+      k.clock = (k.clock || 0) + dt;
+      const off = k.clock % 90 > 60;
+      if (off && k.wrist !== 'off') k.wristTs = Date.now();
+      k.wrist = off ? 'off' : 'on';
+      k.ts = Date.now();
+      if (off) continue;
+    }
+    k.hd += (Math.random() - 0.5) * dt * 1.6;
+    const lim = k.wander ? radius * 1.5 : radius * 0.8;
+    if (Math.hypot(k.e, k.n) > lim) k.hd += angDiff(Math.atan2(-k.e, -k.n), k.hd) * dt * 0.9;
+    k.e += Math.sin(k.hd) * k.sp * dt;
+    k.n += Math.cos(k.hd) * k.sp * dt;
+    k.ts = Date.now();
+  }
+}
+
+/* ---------- live mode ---------- */
+let ws = null, geoWatch = null;
+function stopLive() {
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  if (geoWatch != null) { navigator.geolocation.clearWatch(geoWatch); geoWatch = null; }
+}
+function newCode() {
+  const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  return Array.from(crypto.getRandomValues(new Uint8Array(10)), b => A[b % A.length]).join('');
+}
+function startLive(code) {
+  stopLive(); demo = false; clearKids();
+  if (!/^[A-Z0-9]{8,16}$/.test(code)) return setStatus('Enter a family code of 8–16 letters or numbers, or press New code.');
+  if (!location.host || !/^https?:$/.test(location.protocol))
+    return setStatus('Live mode needs the Artemis server. Run "npm start" and open this page from it.');
+  if (!('geolocation' in navigator)) return setStatus('This browser can\u2019t read your location, so distances can\u2019t be worked out.');
+  geoWatch = navigator.geolocation.watchPosition(
+    p => { me = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy }; },
+    err => setStatus('Your location: ' + err.message + '. Allow location access and reconnect.'),
+    { enableHighAccuracy: true, maximumAge: 2000 });
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  ws.onopen = () => ws.send(JSON.stringify({ type: 'join', role: 'parent', family: code }));
+  ws.onerror = () => setStatus('Couldn\u2019t reach the Artemis server. Check it\u2019s running, then press Connect.');
+  ws.onclose = () => { if (!demo) setStatus('Disconnected from the server. Press Connect to retry.'); };
+  ws.onmessage = ev => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.type === 'error') setStatus(m.error);
+    if (m.type === 'joined') setStatus(`Connected. On each child\u2019s phone open ${location.origin}/child.html?family=${code}`);
+    if (m.type === 'hello') { const k = ensureKid(m.id, m.name); k.left = false; k.ts = Date.now(); }
+    if (m.type === 'loc') {
+      const k = ensureKid(m.id, m.name);
+      Object.assign(k, { lat: m.lat, lon: m.lon, battery: m.battery, wrist: m.wrist || null, wristTs: m.wristTs || null, ts: Date.now(), left: false });
+      toLocal(k);
+    }
+    if (m.type === 'left') { const k = kids.get(m.id); if (k) k.left = true; }
+  };
+}
+
+/* ---------- controls ---------- */
+const mDemo = $('#mDemo'), mLive = $('#mLive'), liveBox = $('#liveBox'), codeIn = $('#code');
+function setMode(live) {
+  mDemo.setAttribute('aria-pressed', String(!live));
+  mLive.setAttribute('aria-pressed', String(live));
+  liveBox.hidden = !live;
+  if (live) { demo = false; stopLive(); clearKids(); setStatus('Enter or create a family code, then press Connect.'); }
+  else startDemo();
+}
+mDemo.onclick = () => setMode(false);
+mLive.onclick = () => setMode(true);
+$('#gen').onclick = () => { codeIn.value = newCode(); };
+$('#connect').onclick = () => startLive(codeIn.value.trim().toUpperCase());
+$('#radius').oninput = e => { radius = +e.target.value; $('#radOut').textContent = radius + ' m'; };
+function alignNorth() { northYaw = getCamYaw(); setStatus('North set to the direction you\u2019re facing.'); }
+$('#north').onclick = alignNorth;
+
+async function enterXR() {
+  if (!navigator.xr) return setStatus('This browser doesn\u2019t support WebXR. Open the page in a headset browser such as Meta Quest Browser.');
+  const ar = await navigator.xr.isSessionSupported('immersive-ar').catch(() => false);
+  const vr = ar || await navigator.xr.isSessionSupported('immersive-vr').catch(() => false);
+  if (!vr) return setStatus('No AR or VR device found for this browser.');
+  try {
+    const session = await navigator.xr.requestSession(ar ? 'immersive-ar' : 'immersive-vr', { optionalFeatures: ['local-floor'] });
+    if (ar) { scene.background = null; scene.fog = null; grid.visible = false; } // passthrough: real world behind the markers
+    session.addEventListener('squeeze', alignNorth); // in the headset: face north and squeeze the grip
+    session.addEventListener('end', () => { scene.background = SKY; scene.fog = fog; grid.visible = true; resize(); });
+    await renderer.xr.setSession(session);
+  } catch (e) { setStatus('Couldn\u2019t start the headset session: ' + e.message); }
+}
+$('#xr').onclick = enterXR;
+
+/* drag to look (screens only) */
+let yaw = 0, pitch = -0.12, drag = null;
+glCanvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, yaw, pitch }; glCanvas.setPointerCapture(e.pointerId); });
+glCanvas.addEventListener('pointermove', e => {
+  if (!drag) return;
+  yaw = drag.yaw + (e.clientX - drag.x) * 0.005;
+  pitch = Math.max(-1.2, Math.min(1.2, drag.pitch + (e.clientY - drag.y) * 0.005));
+});
+const endDrag = () => { drag = null; };
+glCanvas.addEventListener('pointerup', endDrag);
+glCanvas.addEventListener('pointercancel', endDrag);
+
+function resize() {
+  if (renderer.xr.isPresenting) return;
+  const w = app.clientWidth, h = app.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+
+/* ---------- loop ---------- */
+let last = performance.now(), hudT = 1;
+renderer.setAnimationLoop(() => {
+  const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now;
+  const presenting = renderer.xr.isPresenting;
+  if (!presenting) camera.rotation.set(pitch, yaw, 0, 'YXZ');
+  if (demo) stepDemo(dt);
+  updateKids();
+  zone.position.set(camera.position.x, 0.02, camera.position.z);
+  zone.scale.set(radius, radius, 1);
+  hudMesh.visible = presenting;
+  hudT += dt;
+  if (hudT > 0.1) { hudT = 0; drawHUD(getCamYaw()); }
+  renderer.render(scene, camera);
+});
+
+startDemo();
+</script>
+</body>
+</html>

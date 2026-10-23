@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: artemis
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /glasses.html
+    autoDeploy: true

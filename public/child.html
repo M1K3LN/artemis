@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Artemis – Share my location</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#EEF3F5;--card:#fff;--text:#172437;--muted:#4E5F73;--line:#C9D5DC;--accent:#9A5A00;--accent-ink:#fff;--live:#1B8A5A;
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#172437;--card:#1F3048;--text:#EAF2F4;--muted:#A7B6C4;--line:#2E4562;--accent:#FFB703;--accent-ink:#172437;--live:#7BE0B5}}
+:root[data-theme="dark"]{--bg:#172437;--card:#1F3048;--text:#EAF2F4;--muted:#A7B6C4;--line:#2E4562;--accent:#FFB703;--accent-ink:#172437;--live:#7BE0B5}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:"Atkinson Hyperlegible",system-ui,sans-serif;font-size:17px;line-height:1.45}
+main{max-width:420px;margin:0 auto;padding:28px 20px}
+h1{font-size:30px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 22px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;display:grid;gap:14px}
+label{display:grid;gap:6px;font-weight:700}
+input{font:inherit;color:inherit;background:transparent;border:1px solid var(--line);border-radius:12px;padding:12px}
+#code{text-transform:uppercase;letter-spacing:.08em}
+button{font:inherit;border-radius:12px;padding:14px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+.live{text-align:center}
+.dot{width:72px;height:72px;border-radius:50%;margin:6px auto 4px;background:var(--live);box-shadow:0 0 0 0 var(--live);animation:pulse 2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--live) 60%,transparent)}100%{box-shadow:0 0 0 26px transparent}}
+@media (prefers-reduced-motion:reduce){.dot{animation:none}}
+.live h2{margin:8px 0 0;font-size:22px}
+#info{color:var(--muted);margin:0}
+#err{color:#E5484D;min-height:1.2em}
+.fine{color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Artemis</h1>
+  <p class="sub">Share where you are with your parent while you're out together.</p>
+
+  <section id="setup" class="card">
+    <label>Your name <input id="name" maxlength="24" placeholder="e.g. Maya" autocomplete="off"></label>
+    <label>Family code <input id="code" maxlength="16" placeholder="From your parent's screen" autocomplete="off" spellcheck="false"></label>
+    <button id="start" class="primary">Start sharing</button>
+  </section>
+
+  <section id="live" class="card live" hidden>
+    <div class="dot" aria-hidden="true"></div>
+    <h2>Sharing your location</h2>
+    <p id="info">Connecting…</p>
+    <button id="stop">Stop sharing</button>
+  </section>
+
+  <p id="err" role="alert"></p>
+  <p class="fine">Only someone with your family code can see where you are, and only while this page is open and sharing. Nothing is saved after you stop. Keep this page open on screen while you're out.</p>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const store = {
+  get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} }
+};
+let id = store.get('artemis-id');
+if (!id) { id = 'c-' + Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join(''); store.set('artemis-id', id); }
+$('name').value = store.get('artemis-name') || '';
+$('code').value = new URLSearchParams(location.search).get('family') || store.get('artemis-code') || '';
+
+let ws = null, watch = null, lock = null, battery = null, lastSent = 0, pending = null, retry = null, sharing = false, heartbeat = null;
+const info = t => { $('info').textContent = t; };
+const err = t => { $('err').textContent = t || ''; };
+
+(async () => { try { const b = await navigator.getBattery(); const u = () => battery = Math.round(b.level * 100); u(); b.addEventListener('levelchange', u); } catch {} })();
+
+function connect(code, name) {
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  ws.onopen = () => { ws.send(JSON.stringify({ type: 'join', role: 'child', family: code, id, name })); if (pending) send(pending, true); };
+  ws.onmessage = e => {
+    let m; try { m = JSON.parse(e.data); } catch { return; }
+    if (m.type === 'error') { err(m.error); stop(); }
+    if (m.type === 'joined') info(m.parentsOnline ? 'Connected. Your parent can see you.' : 'Connected. Waiting for your parent to open their view.');
+  };
+  ws.onclose = () => { if (sharing) { info('Connection lost. Retrying…'); retry = setTimeout(() => connect(code, name), 3000); } };
+}
+
+function send(p, force) {
+  pending = p;
+  const now = Date.now();
+  if ((!force && now - lastSent < 2000) || !ws || ws.readyState !== 1) return;
+  lastSent = now;
+  ws.send(JSON.stringify({ type: 'loc', lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, battery }));
+  info(`Updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}, accurate to about ${Math.round(p.coords.accuracy)} m`);
+}
+
+async function start() {
+  err('');
+  const name = $('name').value.trim(), code = $('code').value.trim().toUpperCase();
+  if (!name) return err('Enter your name so your parent knows which marker is you.');
+  if (!/^[A-Z0-9]{8,16}$/.test(code)) return err('Enter the family code shown on your parent\u2019s screen.');
+  if (!('geolocation' in navigator)) return err('This browser can\u2019t share location.');
+  store.set('artemis-name', name); store.set('artemis-code', code);
+  sharing = true;
+  $('setup').hidden = true; $('live').hidden = false;
+  connect(code, name);
+  watch = navigator.geolocation.watchPosition(p => send(p), e => { err('Location: ' + e.message + '. Allow location access to share.'); stop(); },
+    { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 });
+  // watchPosition goes quiet when the phone is still; resend so the parent doesn't see "signal lost".
+  heartbeat = setInterval(() => { if (pending && Date.now() - lastSent >= 10000) send(pending, true); }, 5000);
+  try { lock = await navigator.wakeLock.request('screen'); } catch {}
+}
+
+function stop() {
+  sharing = false;
+  clearTimeout(retry);
+  clearInterval(heartbeat);
+  if (watch != null) { navigator.geolocation.clearWatch(watch); watch = null; }
+  if (ws) { ws.close(); ws = null; }
+  if (lock) { lock.release().catch(() => {}); lock = null; }
+  pending = null;
+  $('setup').hidden = false; $('live').hidden = true;
+}
+
+$('start').onclick = start;
+$('stop').onclick = stop;
+</script>
+</body>
+</html>

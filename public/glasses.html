@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Artemis – Glasses view</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EEF3F5; --panel:rgba(255,255,255,.92); --text:#172437; --muted:#4E5F73;
+  --line:#C9D5DC; --accent:#9A5A00; --accent-ink:#fff; --seg:#DCE5EA;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#172437; --panel:rgba(31,48,72,.92); --text:#EAF2F4; --muted:#A7B6C4;
+  --line:#2E4562; --accent:#FFB703; --accent-ink:#172437; --seg:#24395A;
+}}
+:root[data-theme="dark"]{
+  --bg:#172437; --panel:rgba(31,48,72,.92); --text:#EAF2F4; --muted:#A7B6C4;
+  --line:#2E4562; --accent:#FFB703; --accent-ink:#172437; --seg:#24395A;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font-family:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px;overflow:hidden}
+#app{position:relative;height:100%}
+#gl{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.bar{position:absolute;left:10px;right:10px;top:10px;display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;
+  background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px 10px;backdrop-filter:blur(10px)}
+.brand{font-weight:700;font-size:18px;margin-right:4px}
+.seg{display:inline-flex;background:var(--seg);border-radius:9px;padding:2px}
+.seg button{border:0;background:transparent;color:var(--muted);padding:6px 11px;border-radius:7px}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--text);font-weight:700}
+button,input{font:inherit;color:inherit}
+button{background:transparent;border:1px solid var(--line);border-radius:9px;padding:6px 12px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input[type=text]{width:9.5em;background:transparent;border:1px solid var(--line);border-radius:9px;padding:6px 8px;text-transform:uppercase;letter-spacing:.06em}
+.rad{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+.rad input{width:100px;accent-color:var(--accent)}
+.rad output{color:var(--text);min-width:3.4em}
+#liveBox{display:inline-flex;gap:6px;align-items:center}
+#liveBox[hidden]{display:none}
+.spacer{flex:1}
+#status{flex-basis:100%;color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+#status:empty{display:none}
+#lens{position:absolute;width:min(30vh,42vw);height:auto;aspect-ratio:1;mix-blend-mode:screen;pointer-events:none;border-radius:6px}
+#lens.display{right:14%;top:55%}
+#lens.ar{left:50%;bottom:76px;transform:translateX(-50%);width:min(34vh,56vw)}
+.pad{position:absolute;left:10px;bottom:10px;display:flex;gap:8px}
+.pad button{background:var(--panel);backdrop-filter:blur(10px)}
+body.lens-only{background:#000}
+body.lens-only .bar,body.lens-only .pad,body.lens-only #gl{display:none}
+body.lens-only #lens{position:static;display:block;margin:0 auto;width:min(100vw,100vh);mix-blend-mode:normal;pointer-events:auto;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="gl" aria-label="Simulated park. Drag to look around."></canvas>
+  <div class="bar">
+    <span class="brand">Artemis glasses</span>
+    <div class="seg" role="group" aria-label="Data source">
+      <button id="mDemo" aria-pressed="true">Demo</button>
+      <button id="mLive" aria-pressed="false">Live</button>
+    </div>
+    <span id="liveBox" hidden>
+      <input id="code" type="text" maxlength="16" placeholder="Family code" autocomplete="off" spellcheck="false" aria-label="Family code">
+      <button id="connect">Connect</button>
+    </span>
+    <div class="seg" role="group" aria-label="Glasses type">
+      <button id="pDisplay" aria-pressed="true">Display glasses</button>
+      <button id="pAR" aria-pressed="false">AR glasses (2027 concept)</button>
+    </div>
+    <label class="rad">Safe zone <input id="radius" type="range" min="10" max="150" step="5" value="40"><output id="radOut">40 m</output></label>
+    <span class="spacer"></span>
+    <button id="north" title="Face north, then press">Set north</button>
+    <button id="xr" class="primary">Enter AR / VR</button>
+    <div id="status" role="status"></div>
+  </div>
+  <canvas id="lens" class="display" width="600" height="600" aria-label="Glasses display"></canvas>
+  <div class="pad">
+    <button id="pinch" title="Neural Band pinch. Keyboard: Enter">Pinch</button>
+    <button id="swipe" title="Neural Band swipe. Keyboard: Esc">Swipe</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const F = '"Atkinson Hyperlegible", system-ui, sans-serif';
+const PALETTE = [0xFF8FB1, 0x7CC6FE, 0xC5E063, 0xB79CED, 0x5FD3B6, 0xFFA552];
+const STALE_MS = 30000;
+const params = new URLSearchParams(location.search);
+const lensOnly = params.get('lens') === '1';
+if (lensOnly) document.body.classList.add('lens-only');
+
+let radius = 40, northYaw = 0, demo = true, profile = 'display', inAR = false;
+let view = 'glance', alertId = null, findId = null;
+let compass = null; // degrees clockwise from north, lens-only mode
+
+/* ---------- scene: a simple park stands in for the real world ---------- */
+const app = $('#app'), glCanvas = $('#gl');
+const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType('local-floor');
+
+const scene = new THREE.Scene();
+const SKY = new THREE.Color(0xBFD9E8);
+const fog = new THREE.Fog(0xBFD9E8, 60, 200);
+scene.background = SKY; scene.fog = fog;
+const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 600);
+camera.position.set(0, 1.6, 0);
+scene.add(camera);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x4a5a3a, 1.05));
+const sun = new THREE.DirectionalLight(0xffffff, 0.6); sun.position.set(30, 60, 20); scene.add(sun);
+
+const world = new THREE.Group(); scene.add(world);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshLambertMaterial({ color: 0x7C9A5E }));
+ground.rotation.x = -Math.PI / 2; world.add(ground);
+const path = new THREE.Mesh(new THREE.RingGeometry(18, 21, 64), new THREE.MeshLambertMaterial({ color: 0xCDBB95 }));
+path.rotation.x = -Math.PI / 2; path.position.y = 0.01; world.add(path);
+const trunkG = new THREE.CylinderGeometry(0.2, 0.28, 2.2, 7), leafG = new THREE.ConeGeometry(1.6, 4, 8);
+const trunkM = new THREE.MeshLambertMaterial({ color: 0x6B4F36 }), leafM = new THREE.MeshLambertMaterial({ color: 0x3F6B3A });
+for (let i = 0; i < 70; i++) {
+  const a = Math.random() * Math.PI * 2, d = 8 + Math.random() * 120;
+  if (d > 16 && d < 23) continue;
+  const t = new THREE.Group();
+  const tr = new THREE.Mesh(trunkG, trunkM); tr.position.y = 1.1;
+  const lf = new THREE.Mesh(leafG, leafM); lf.position.y = 4;
+  t.add(tr, lf); t.position.set(Math.cos(a) * d, 0, Math.sin(a) * d);
+  t.scale.setScalar(0.8 + Math.random() * 0.6);
+  world.add(t);
+}
+const zone = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 128),
+  new THREE.MeshBasicMaterial({ color: 0xFFB703, transparent: true, opacity: 0.6, side: THREE.DoubleSide }));
+zone.rotation.x = -Math.PI / 2;
+scene.add(zone);
+
+/* lens display: DOM overlay on screens, head-locked additive panel in a headset */
+const lensEl = $('#lens'), lx = lensEl.getContext('2d');
+const lensTex = new THREE.CanvasTexture(lensEl);
+const lensMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+  new THREE.MeshBasicMaterial({ map: lensTex, transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending }));
+lensMesh.renderOrder = 999; lensMesh.visible = false;
+camera.add(lensMesh);
+
+/* ---------- helpers ---------- */
+const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+const hex = c => '#' + c.toString(16).padStart(6, '0');
+const fmtDist = d => d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km';
+const fmtTime = t => t ? new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'unknown';
+function rr(x, X, Y, W, H, r) {
+  x.beginPath(); x.moveTo(X + r, Y);
+  x.arcTo(X + W, Y, X + W, Y + H, r); x.arcTo(X + W, Y + H, X, Y + H, r);
+  x.arcTo(X, Y + H, X, Y, r); x.arcTo(X, Y, X + W, Y, r); x.closePath();
+}
+function arrow(x, X, Y, rot, col, s) {
+  x.save(); x.translate(X, Y); x.rotate(rot); x.scale(s, s); x.fillStyle = col;
+  x.beginPath(); x.moveTo(0, -20); x.lineTo(14, 14); x.lineTo(0, 6); x.lineTo(-14, 14); x.closePath(); x.fill();
+  x.restore();
+}
+function setStatus(t) { $('#status').textContent = t || ''; }
+const fwd = new THREE.Vector3();
+function getCamYaw() {
+  if (lensOnly) return compass == null ? 0 : northYaw - compass * Math.PI / 180;
+  camera.getWorldDirection(fwd); return Math.atan2(-fwd.x, -fwd.z);
+}
+const headingKnown = () => !lensOnly || compass != null;
+let actx;
+function alertCue() {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+    o.frequency.value = 880;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.5);
+  } catch (e) {}
+  try { navigator.vibrate && navigator.vibrate([120, 60, 120]); } catch (e) {}
+}
+
+/* ---------- kids: a walking figure (the real child) plus optional AR marker ---------- */
+const kids = new Map();
+const bodyG = new THREE.CylinderGeometry(0.17, 0.2, 0.75, 10), headG = new THREE.SphereGeometry(0.15, 14, 10);
+const skinM = new THREE.MeshLambertMaterial({ color: 0xE3BC97 });
+function ensureKid(id, name) {
+  let k = kids.get(id);
+  if (k) { if (name) k.name = name; return k; }
+  const color = PALETTE[kids.size % PALETTE.length];
+  const group = new THREE.Group();
+  const figure = new THREE.Group();
+  const body = new THREE.Mesh(bodyG, new THREE.MeshLambertMaterial({ color })); body.position.y = 0.55;
+  const head = new THREE.Mesh(headG, skinM); head.position.y = 1.08;
+  figure.add(body, head);
+  const marker = new THREE.Group();
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1, 10, 1, true),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5 }));
+  const lc = document.createElement('canvas'); lc.width = 384; lc.height = 96;
+  const lt = new THREE.CanvasTexture(lc);
+  const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: lt, transparent: true, depthTest: false }));
+  label.renderOrder = 10;
+  marker.add(beam, label);
+  group.add(figure, marker);
+  scene.add(group);
+  k = { id, name: name || 'Child', color, e: 0, n: 0, dist: 0, wx: 0, wz: 0, lat: null, lon: null, battery: null,
+        ts: Date.now(), hasFix: false, left: false, outside: false, stale: false, problem: false,
+        group, figure, marker, beam, label, lc, lt, lastLabel: '' };
+  kids.set(id, k);
+  return k;
+}
+function clearKids() {
+  for (const k of kids.values()) {
+    scene.remove(k.group);
+    k.figure.children[0].material.dispose();
+    k.beam.geometry.dispose(); k.beam.material.dispose();
+    k.lt.dispose(); k.label.material.dispose();
+  }
+  kids.clear(); view = 'glance'; alertId = findId = null;
+}
+function drawLabel(k, txt) {
+  const x = k.lc.getContext('2d');
+  x.clearRect(0, 0, 384, 96);
+  x.font = '700 36px ' + F;
+  const w = Math.min(376, x.measureText(txt).width + 40);
+  x.fillStyle = k.problem ? 'rgba(229,72,77,.95)' : 'rgba(23,36,55,.85)';
+  rr(x, (384 - w) / 2, 16, w, 64, 18); x.fill();
+  x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(txt, 192, 49, 350);
+  k.lt.needsUpdate = true;
+}
+
+/* ---------- positions ---------- */
+let me = null;
+function toLocal(k) {
+  if (!me || k.lat == null) return;
+  const R = 6371000, d2r = Math.PI / 180;
+  k.n = (k.lat - me.lat) * d2r * R;
+  k.e = (k.lon - me.lon) * d2r * R * Math.cos(me.lat * d2r);
+  k.hasFix = true;
+}
+function updateKids() {
+  const now = Date.now(), c = Math.cos(northYaw), s = Math.sin(northYaw);
+  const showMarker = profile === 'ar' && !lensOnly;
+  for (const k of kids.values()) {
+    if (!demo) toLocal(k);
+    k.dist = Math.hypot(k.e, k.n);
+    k.wx = k.e * c - k.n * s;
+    k.wz = -k.e * s - k.n * c;
+    k.group.visible = k.hasFix;
+    k.group.position.set(camera.position.x + k.wx, 0, camera.position.z + k.wz);
+    k.figure.visible = !inAR; // in passthrough you see the real child
+    k.marker.visible = showMarker;
+    const h = 2 + k.dist * 0.12;
+    k.beam.scale.y = h; k.beam.position.y = h / 2;
+    const sc = Math.max(1, k.dist * 0.07);
+    k.label.scale.set(2.4 * sc, 0.6 * sc, 1);
+    k.label.position.y = h + 0.5 * sc;
+
+    k.outside = k.hasFix && k.dist > radius;
+    k.stale = k.left || now - k.ts > STALE_MS;
+    k.off = k.wrist === 'off';
+    const problem = k.outside || k.stale || k.off;
+    if (problem && !k.problem) {
+      alertCue();
+      if (view !== 'find') { view = 'alert'; alertId = k.id; }
+    }
+    if (!problem && k.problem && view === 'alert' && alertId === k.id) { view = 'glance'; alertId = null; }
+    k.problem = problem;
+    k.beam.material.opacity = k.stale ? 0.15 : 0.5;
+    const txt = k.hasFix ? `${k.name}  ${fmtDist(k.dist)}` : `${k.name}  no GPS yet`;
+    const key = txt + problem;
+    if (showMarker && key !== k.lastLabel) { k.lastLabel = key; drawLabel(k, txt); }
+  }
+}
+
+/* ---------- lens UI (600 x 600, black = see-through) ---------- */
+const C = { text: '#F1EFE8', dim: '#B4B2A9', faint: '#888780', amber: '#FAC775', red: '#F09595', blue: '#85B7EB', green: '#C0DD97' };
+function relText(rel) {
+  const a = Math.abs(rel) * 180 / Math.PI, side = rel > 0 ? 'left' : 'right';
+  if (a < 25) return 'Straight ahead';
+  if (a < 70) return `Ahead, to your ${side}`;
+  if (a < 115) return `To your ${side}`;
+  if (a < 160) return `Behind you, to the ${side}`;
+  return 'Behind you';
+}
+const COMPASS = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+function dirInfo(k, camYaw) {
+  if (headingKnown()) {
+    const rel = angDiff(Math.atan2(-k.wx, -k.wz), camYaw);
+    return { rot: -rel, text: relText(rel) };
+  }
+  const b = Math.atan2(k.e, k.n), deg = (b * 180 / Math.PI + 360) % 360;
+  return { rot: b, text: 'To the ' + COMPASS[Math.round(deg / 45) % 8] };
+}
+function lensText(x, t, X, Y, size, col, align, weight, max) {
+  x.font = `${weight || 400} ${size}px ${F}`; x.fillStyle = col; x.textAlign = align || 'left';
+  x.fillText(t, X, Y, max || 520);
+}
+function drawGlance(x, camYaw) {
+  const list = [...kids.values()];
+  lensText(x, `Safe zone ${radius} m${headingKnown() ? '' : '   (north up)'}`, 48, 62, 28, C.dim);
+  if (!list.length) {
+    lensText(x, demo ? 'Starting demo' : 'Waiting for kids to join', 300, 300, 38, C.text, 'center');
+    return;
+  }
+  list.slice(0, 4).forEach((k, i) => {
+    const y = 150 + i * 92;
+    x.fillStyle = k.stale ? C.faint : hex(k.color);
+    x.beginPath(); x.arc(62, y, 13, 0, 7); x.fill();
+    lensText(x, k.name, 92, y, 44, k.problem ? C.red : C.text, 'left', 700, 220);
+    lensText(x, k.hasFix ? fmtDist(k.dist) : '–', 468, y, 42, k.problem ? C.red : C.text, 'right', 400, 150);
+    if (k.off) lensText(x, 'off', 528, y, 28, C.red, 'center', 700);
+    else if (k.hasFix && !k.stale) arrow(x, 528, y, dirInfo(k, camYaw).rot, k.outside ? C.red : C.amber, 1.4);
+  });
+  const bad = list.filter(k => k.problem).length;
+  lensText(x, bad ? `${bad} need${bad === 1 ? 's' : ''} attention   Pinch to find` : 'All inside the zone', 48, 548, 28, bad ? C.red : C.dim);
+}
+function drawAlert(x, k, camYaw) {
+  x.fillStyle = C.red;
+  x.beginPath(); x.moveTo(300, 92); x.lineTo(346, 172); x.lineTo(254, 172); x.closePath(); x.fill();
+  x.fillStyle = '#000'; x.fillRect(296, 116, 8, 30); x.fillRect(296, 152, 8, 8);
+  lensText(x, k.stale ? `${k.name}: signal lost` : k.off ? `${k.name}'s watch may be off` : `${k.name} left the zone`, 300, 236, 44, C.text, 'center', 700, 540);
+  if (k.hasFix) {
+    lensText(x, fmtDist(k.dist), 300, 330, 96, C.red, 'center', 700);
+    lensText(x, k.stale ? 'Last known position' : k.off ? `Last on wrist ${fmtTime(k.wristTs)}` : dirInfo(k, camYaw).text, 300, 418, 34, C.text, 'center');
+  }
+  lensText(x, lensOnly ? 'Pinch to find     Back to dismiss' : 'Pinch to find     Swipe to dismiss', 300, 540, 26, C.faint, 'center');
+}
+function drawFind(x, k, camYaw) {
+  lensText(x, `Finding ${k.name}`, 300, 70, 38, C.blue, 'center', 700);
+  if (kids.size > 1) lensText(x, 'Swipe for next child', 300, 112, 24, C.faint, 'center');
+  if (k.hasFix) {
+    const d = dirInfo(k, camYaw);
+    arrow(x, 300, 250, d.rot, k.stale ? C.faint : C.amber, 5);
+    lensText(x, fmtDist(k.dist), 300, 420, 80, C.text, 'center', 700);
+    lensText(x, k.off ? `Watch off since ${fmtTime(k.wristTs)}` : d.text, 300, 476, 30, k.off ? C.red : C.dim, 'center');
+  } else lensText(x, 'Waiting for GPS', 300, 300, 40, C.text, 'center');
+  const age = Math.max(0, Math.round((Date.now() - k.ts) / 1000));
+  lensText(x, `${age < 3 ? 'Updated now' : (k.stale ? 'Last seen ' : 'Updated ') + age + 's ago'}${k.battery != null ? '    Battery ' + k.battery + '%' : ''}`,
+    300, 548, 26, C.faint, 'center');
+}
+function drawLens(camYaw) {
+  const x = lx;
+  x.fillStyle = '#000'; x.fillRect(0, 0, 600, 600);
+  x.textBaseline = 'middle';
+  if (view === 'alert' && !kids.has(alertId)) view = 'glance';
+  if (view === 'find' && !kids.has(findId)) view = 'glance';
+  if (view === 'alert') drawAlert(x, kids.get(alertId), camYaw);
+  else if (view === 'find') drawFind(x, kids.get(findId), camYaw);
+  else drawGlance(x, camYaw);
+  lensTex.needsUpdate = true;
+}
+
+/* ---------- Neural Band gestures (simulated) ---------- */
+function pinch() {
+  const ids = [...kids.keys()];
+  if (!ids.length) return;
+  if (view === 'alert') { findId = alertId; view = 'find'; alertId = null; }
+  else if (view === 'find') {
+    const i = ids.indexOf(findId);
+    if (i + 1 < ids.length) findId = ids[i + 1]; else { view = 'glance'; findId = null; }
+  } else {
+    const problem = ids.find(id => kids.get(id).problem);
+    view = 'find'; findId = problem || ids[0];
+  }
+}
+function swipe() { view = 'glance'; alertId = findId = null; }
+function stepKid(dir) { // in Find, move to the next or previous child
+  const ids = [...kids.keys()];
+  if (view !== 'find' || ids.length < 2) return;
+  findId = ids[(ids.indexOf(findId) + dir + ids.length) % ids.length];
+}
+$('#pinch').onclick = pinch;
+$('#swipe').onclick = swipe;
+
+/* Real glasses: the touchpad and Neural Band arrive as keydown events
+   (ArrowUp/Down/Left/Right and Enter) on the focused element. Back is handled by the
+   glasses' shell, which calls history.back(), so Find and Alert get a history entry. */
+let ownEntry = false, ignorePop = false, lastView = 'glance';
+function syncHistory() {
+  if (!lensOnly || view === lastView) return;
+  if (lastView === 'glance' && view !== 'glance' && !ownEntry) { history.pushState({ artemis: 1 }, ''); ownEntry = true; }
+  if (view === 'glance' && ownEntry) { ownEntry = false; ignorePop = true; history.back(); }
+  lastView = view;
+}
+addEventListener('popstate', () => {
+  if (ignorePop) { ignorePop = false; return; }
+  ownEntry = false; swipe(); lastView = 'glance';
+});
+if (lensOnly) { lensEl.tabIndex = 0; lensEl.setAttribute('role', 'application'); }
+
+let sensorsAsked = false;
+async function enableCompass() { // sensor permission must come from a user action
+  if (sensorsAsked || !lensOnly) return;
+  sensorsAsked = true;
+  try {
+    const req = (window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission) ||
+                (window.DeviceMotionEvent && DeviceMotionEvent.requestPermission);
+    if (req) await req.call(req === DeviceOrientationEvent.requestPermission ? DeviceOrientationEvent : DeviceMotionEvent);
+  } catch (e) {}
+  if ('ondeviceorientationabsolute' in window) addEventListener('deviceorientationabsolute', onOrient);
+  addEventListener('deviceorientation', onOrient);
+}
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); enableCompass(); pinch(); return; }
+  if (e.key.startsWith('Arrow')) {
+    e.preventDefault(); // stop focus moving or the page scrolling
+    if (view === 'alert') swipe();
+    else stepKid(e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1);
+    return;
+  }
+  if (e.key === 'Escape' || e.key === 'Backspace') { e.preventDefault(); swipe(); }
+});
+
+/* ---------- demo ---------- */
+function startDemo() {
+  stopLive(); demo = true; clearKids();
+  [['Maya', 8, 5], ['Leo', -7, 12], ['Ava', 4, -10]].forEach(([name, e, n], i) => {
+    const k = ensureKid('demo' + i, name);
+    Object.assign(k, { e, n, hasFix: true, hd: Math.random() * 6.28, sp: 0.7 + Math.random() * 0.6,
+                       battery: 55 + (Math.random() * 45 | 0), wander: i === 1, removes: i === 2 });
+  });
+  if (!lensOnly) setStatus('Demo: Leo drifts out of the safe zone; Ava takes her watch off now and then. Pinch opens Find, Swipe dismisses.');
+}
+function stepDemo(dt) {
+  for (const k of kids.values()) {
+    if (k.removes) { // Ava takes her watch off for 30 s every 90 s and leaves it on a bench
+      k.clock = (k.clock || 0) + dt;
+      const off = k.clock % 90 > 60;
+      if (off && k.wrist !== 'off') k.wristTs = Date.now();
+      k.wrist = off ? 'off' : 'on';
+      k.ts = Date.now();
+      if (off) continue;
+    }
+    k.hd += (Math.random() - 0.5) * dt * 1.6;
+    const lim = k.wander ? radius * 1.5 : radius * 0.8;
+    if (Math.hypot(k.e, k.n) > lim) k.hd += angDiff(Math.atan2(-k.e, -k.n), k.hd) * dt * 0.9;
+    k.e += Math.sin(k.hd) * k.sp * dt;
+    k.n += Math.cos(k.hd) * k.sp * dt;
+    k.ts = Date.now();
+  }
+}
+
+/* ---------- live (same relay as parent.html) ---------- */
+let ws = null, geoWatch = null;
+function stopLive() {
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  if (geoWatch != null) { navigator.geolocation.clearWatch(geoWatch); geoWatch = null; }
+}
+function startLive(code) {
+  stopLive(); demo = false; clearKids();
+  if (!/^[A-Z0-9]{8,16}$/.test(code)) return setStatus('Enter a family code of 8–16 letters or numbers.');
+  if (!location.host || !/^https?:$/.test(location.protocol))
+    return setStatus('Live mode needs the Artemis server. Run "npm start" and open this page from it.');
+  if (!('geolocation' in navigator)) return setStatus('This browser can\u2019t read your location, so distances can\u2019t be worked out.');
+  geoWatch = navigator.geolocation.watchPosition(
+    p => { me = { lat: p.coords.latitude, lon: p.coords.longitude }; },
+    err => setStatus('Your location: ' + err.message + '. Allow location access and reconnect.'),
+    { enableHighAccuracy: true, maximumAge: 2000 });
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  ws.onopen = () => ws.send(JSON.stringify({ type: 'join', role: 'parent', family: code }));
+  ws.onerror = () => setStatus('Couldn\u2019t reach the Artemis server. Check it\u2019s running, then press Connect.');
+  ws.onclose = () => { if (!demo) setStatus('Disconnected from the server. Press Connect to retry.'); };
+  ws.onmessage = ev => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.type === 'error') setStatus(m.error);
+    if (m.type === 'joined') setStatus(`Connected. Lens-only link for real glasses: ${location.origin}${location.pathname}?lens=1&family=${code}`);
+    if (m.type === 'hello') { const k = ensureKid(m.id, m.name); k.left = false; k.ts = Date.now(); }
+    if (m.type === 'loc') {
+      const k = ensureKid(m.id, m.name);
+      Object.assign(k, { lat: m.lat, lon: m.lon, battery: m.battery, wrist: m.wrist || null, wristTs: m.wristTs || null, ts: Date.now(), left: false });
+      toLocal(k);
+    }
+    if (m.type === 'left') { const k = kids.get(m.id); if (k) k.left = true; }
+  };
+}
+
+/* ---------- controls ---------- */
+function setPressed(a, b, on) { a.setAttribute('aria-pressed', String(on)); b.setAttribute('aria-pressed', String(!on)); }
+$('#mDemo').onclick = () => { setPressed($('#mDemo'), $('#mLive'), true); $('#liveBox').hidden = true; startDemo(); };
+$('#mLive').onclick = () => {
+  setPressed($('#mDemo'), $('#mLive'), false); $('#liveBox').hidden = false;
+  stopLive(); demo = false; clearKids(); setStatus('Enter the family code, then press Connect.');
+};
+$('#connect').onclick = () => startLive($('#code').value.trim().toUpperCase());
+function setProfile(p) {
+  profile = p;
+  setPressed($('#pDisplay'), $('#pAR'), p === 'display');
+  lensEl.className = p;
+  if (p === 'display') { lensMesh.scale.set(0.2, 0.2, 1); lensMesh.position.set(0.085, -0.07, -0.6); }
+  else { lensMesh.scale.set(0.22, 0.22, 1); lensMesh.position.set(0, -0.17, -0.6); }
+  setStatus(p === 'display'
+    ? 'Display glasses: a small screen in the right lens, about 20\u00b0 wide. No markers in the world.'
+    : 'AR glasses concept: markers pinned over each child, plus a card in your lower view.');
+}
+$('#pDisplay').onclick = () => setProfile('display');
+$('#pAR').onclick = () => setProfile('ar');
+$('#radius').oninput = e => { radius = +e.target.value; $('#radOut').textContent = radius + ' m'; };
+$('#north').onclick = () => { northYaw = getCamYaw(); setStatus('North set to the direction you\u2019re facing.'); };
+
+async function enterXR() {
+  if (!navigator.xr) return setStatus('This browser doesn\u2019t support WebXR. Open the page in a headset browser such as Meta Quest Browser.');
+  const ar = await navigator.xr.isSessionSupported('immersive-ar').catch(() => false);
+  const vr = ar || await navigator.xr.isSessionSupported('immersive-vr').catch(() => false);
+  if (!vr) return setStatus('No AR or VR device found for this browser.');
+  try {
+    const session = await navigator.xr.requestSession(ar ? 'immersive-ar' : 'immersive-vr', { optionalFeatures: ['local-floor'] });
+    if (ar) { inAR = true; scene.background = null; scene.fog = null; world.visible = false; }
+    session.addEventListener('select', pinch);
+    session.addEventListener('squeeze', swipe);
+    session.addEventListener('end', () => { inAR = false; scene.background = SKY; scene.fog = fog; world.visible = true; resize(); });
+    await renderer.xr.setSession(session);
+  } catch (e) { setStatus('Couldn\u2019t start the headset session: ' + e.message); }
+}
+$('#xr').onclick = enterXR;
+
+let yaw = 0, pitch = -0.08, drag = null;
+glCanvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, yaw, pitch }; glCanvas.setPointerCapture(e.pointerId); });
+glCanvas.addEventListener('pointermove', e => {
+  if (!drag) return;
+  yaw = drag.yaw + (e.clientX - drag.x) * 0.005;
+  pitch = Math.max(-1.2, Math.min(1.2, drag.pitch + (e.clientY - drag.y) * 0.005));
+});
+glCanvas.addEventListener('pointerup', () => { drag = null; });
+glCanvas.addEventListener('pointercancel', () => { drag = null; });
+
+function resize() {
+  if (renderer.xr.isPresenting || lensOnly) return;
+  const w = app.clientWidth, h = app.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+
+/* compass for lens-only mode on real glasses or a phone */
+function onOrient(e) {
+  if (typeof e.webkitCompassHeading === 'number' && isFinite(e.webkitCompassHeading)) compass = e.webkitCompassHeading;
+  else if (e.absolute === true && typeof e.alpha === 'number' && isFinite(e.alpha)) compass = (360 - e.alpha) % 360;
+}
+
+/* ---------- loop ---------- */
+let last = performance.now(), lensT = 1;
+renderer.setAnimationLoop(() => {
+  const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now;
+  const presenting = renderer.xr.isPresenting;
+  if (!presenting) camera.rotation.set(pitch, yaw, 0, 'YXZ');
+  if (demo) stepDemo(dt);
+  updateKids();
+  zone.position.set(camera.position.x, 0.03, camera.position.z);
+  zone.scale.set(radius, radius, 1);
+  zone.visible = profile === 'ar' || !inAR;
+  lensMesh.visible = presenting;
+  lensT += dt;
+  if (lensT > 0.1) { lensT = 0; syncHistory(); drawLens(getCamYaw()); }
+  if (!lensOnly) renderer.render(scene, camera);
+});
+
+setProfile('display');
+resize();
+if (lensOnly) lensEl.focus();
+if (lensOnly && params.get('family')) startLive(params.get('family').toUpperCase());
+else startDemo();
+</script>
+</body>
+</html>
