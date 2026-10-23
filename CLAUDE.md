@@ -25,7 +25,7 @@ child.html (phone) ──WebSocket───────────────�
                                     server.js (Node, in-memory relay, no storage)
                                                     │ WebSocket
                          ┌──────────────────────────┴───────────────┐
-              glasses.html?lens=1 (Ray-Ban Display)      parent.html / glasses.html (Quest, WebXR)
+              glasses.html?lens=1 (Ray-Ban Display)   phone.html (iPhone)   parent.html / glasses.html (Quest)
 ```
 
 ### Files
@@ -33,6 +33,7 @@ child.html (phone) ──WebSocket───────────────�
 |---|---|
 | `server.js` | Serves `public/` and relays locations. Supports WebSocket for phones and parents, and `POST /api/loc` for watches. Holds state only in memory; no database. Optional TLS via `TLS_CERT`/`TLS_KEY`. |
 | `public/glasses.html` | Main parent view. `?lens=1` draws only the 600×600 lens UI on black for Ray-Ban Display. `?lens=1&family=CODE` connects live. Without `lens=1` it's a simulator: a three.js park with the lens overlay, a "Display glasses" vs "AR glasses (2027 concept)" toggle, and Quest WebXR. |
+| `public/phone.html` | Parent view for a phone: list of kids with distance and arrow, alert banner with chime and vibration, Find screen, safe-zone slider, a demo mode, and compass arrows on iPhone (`webkitCompassHeading`) after tapping Compass. Same WebSocket protocol and alert rules as the glasses. Built so glasses are optional: the phone is the base product, the glasses are the upgrade. |
 | `public/parent.html` | Original full HUD for Quest: 3D beams over each child, radar, and an alert banner. |
 | `public/child.html` | Sharing page for a phone: name, family code, Start/Stop sharing. |
 | `public/install.html` | Generates the Ray-Ban Display install QR code: `fb-viewapp://web_app_deep_link?appName=…&appUrl=…`. |
@@ -88,6 +89,8 @@ cloudflared tunnel --url http://localhost:8080   # gives the public HTTPS URL
 
 **Fixed after handoff:** the watch and the phone page sent a position only when the device moved, so a child standing still (or a watch left on a bench) showed as "signal lost" after 30 s. Both now resend the last fix on a heartbeat (watch every 15 s, phone every 10 s).
 
+**Phone parent view (`phone.html`):** tested in headless Chromium: demo, live connect, distances (20 m and 60 m test points), watch-off and left-the-zone alerts, signal lost at 30 s, Find and Back. Not yet tried on a real iPhone (compass permission, chime after a tap, screen wake lock).
+
 **Not yet done or verified:**
 1. **The Swift code has never been compiled.** Expect small fixes.
 2. Nothing has run on real Ray-Ban Display glasses. Confirm that a Neural Band pinch arrives as `Enter` and a swipe as arrow keys, that Back works, and whether the compass permission prompt appears and `absolute` heading data arrives.
@@ -102,7 +105,7 @@ cloudflared tunnel --url http://localhost:8080   # gives the public HTTPS URL
 3. **Safe-zone alert:** a kid walks out of the zone and the alert fires within about 15 s, every time.
 4. **Watch-off alert:** a watch left on a bench alerts within about 75 s.
 5. **Signal lost:** a watch in airplane mode shows "signal lost" within about 30 s.
-6. **Usefulness:** time how long it takes to find a kid in a crowd with Artemis versus without.
+6. **Usefulness:** time how long it takes to find a kid in a crowd with the glasses, with `phone.html`, and with Find My. The glasses only earn their price if they clearly beat the phone.
 7. **Endurance:** a 1–2 hour outing; record battery drain, dropouts, and how well the arrows point.
 
 Offered but not built: a test-log mode that records displayed versus actual distance and alert timings.

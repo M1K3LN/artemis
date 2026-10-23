@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#172437">
+<title>Artemis – Parent view</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#EEF3F5;--card:#fff;--text:#172437;--muted:#4E5F73;--line:#C9D5DC;--accent:#9A5A00;--accent-ink:#fff;
+  --ok:#1B8A5A;--bad:#C4282E;--bad-bg:#FBE4E4;
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#172437;--card:#1F3048;--text:#EAF2F4;--muted:#A7B6C4;--line:#2E4562;
+  --accent:#FFB703;--accent-ink:#172437;--ok:#7BE0B5;--bad:#FF8A8F;--bad-bg:#4A2330}}
+:root[data-theme="dark"]{--bg:#172437;--card:#1F3048;--text:#EAF2F4;--muted:#A7B6C4;--line:#2E4562;
+  --accent:#FFB703;--accent-ink:#172437;--ok:#7BE0B5;--bad:#FF8A8F;--bad-bg:#4A2330}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:"Atkinson Hyperlegible",system-ui,sans-serif;font-size:17px;line-height:1.45}
+main{max-width:480px;margin:0 auto;padding:20px 16px 32px}
+h1{font-size:26px;margin:0}
+.top{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.top .spacer{flex:1}
+.sub{color:var(--muted);margin:4px 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;display:grid;gap:14px}
+label{display:grid;gap:6px;font-weight:700}
+input{font:inherit;color:inherit;background:transparent;border:1px solid var(--line);border-radius:12px;padding:12px}
+#code{text-transform:uppercase;letter-spacing:.08em}
+button{font:inherit;border-radius:12px;padding:12px 14px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+button.small{padding:7px 11px;font-size:15px}
+button:focus-visible,input:focus-visible,.kid:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.row{display:flex;gap:10px}
+.row>*{flex:1}
+[hidden]{display:none!important}
+#err{color:var(--bad);min-height:1.2em;margin:0}
+.fine{color:var(--muted);font-size:14px;margin:0}
+
+#alert{background:var(--bad-bg);color:var(--text);border:2px solid var(--bad);border-radius:16px;padding:14px 16px;margin-bottom:12px;
+  display:flex;gap:12px;align-items:center}
+#alert b{display:block;font-size:19px}
+#alert .grow{flex:1}
+.meta{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:15px;margin:2px 2px 10px;gap:8px;flex-wrap:wrap}
+.rad{display:flex;align-items:center;gap:8px}
+.rad input{width:110px;padding:0;accent-color:var(--accent)}
+#kids{display:grid;gap:10px}
+.kid{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;
+  width:100%;text-align:left}
+.kid.bad{border:2px solid var(--bad)}
+.kid .swatch{width:14px;height:14px;border-radius:50%;flex:none}
+.kid .who{flex:1;min-width:0}
+.kid .name{font-weight:700;font-size:20px}
+.kid .state{color:var(--muted);font-size:14px}
+.kid.bad .state{color:var(--bad);font-weight:700}
+.kid .dist{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.arrow{flex:none;transition:transform .25s ease-out}
+.arrow path{fill:var(--accent)}
+.kid.bad .arrow path{fill:var(--bad)}
+.arrow.dim path{fill:var(--line)}
+.empty{color:var(--muted);text-align:center;padding:30px 10px}
+
+#find{text-align:center;padding-top:6px}
+#find h2{margin:0;font-size:24px}
+#find .big{margin:18px auto 6px;display:block}
+#fDist{font-size:64px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+#fDir{font-size:20px;margin:6px 0 4px}
+#fState{color:var(--muted);margin:0 0 18px}
+#fState.bad{color:var(--bad);font-weight:700}
+.status{color:var(--muted);font-size:14px;margin-top:16px;text-align:center;overflow-wrap:anywhere}
+@media (prefers-reduced-motion:reduce){.arrow{transition:none}}
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>Artemis</h1>
+    <span class="spacer"></span>
+    <button id="compassBtn" class="small" hidden>Compass</button>
+    <button id="leave" class="small" hidden>Disconnect</button>
+  </div>
+
+  <section id="setup">
+    <p class="sub">See where your kids are and get an alert when one leaves the safe zone, loses signal, or takes their watch off.</p>
+    <div class="card">
+      <label>Family code
+        <input id="code" maxlength="16" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="PARKTEST26">
+      </label>
+      <div class="row">
+        <button id="gen">New code</button>
+        <button id="connect" class="primary">Connect</button>
+      </div>
+      <p id="err" role="alert"></p>
+      <p class="fine">Each kid joins with the same code, from the watch app or <span id="childLink">/child.html</span>. Keep this page open with the screen on; your phone's GPS gives your position.</p>
+      <button id="demo">Try a demo with pretend kids</button>
+    </div>
+  </section>
+
+  <section id="list" hidden>
+    <div id="alert" role="alert" hidden>
+      <div class="grow"><b id="aTitle"></b><span id="aSub"></span></div>
+      <button id="aFind" class="primary small">Find</button>
+    </div>
+    <div class="meta">
+      <span id="headingNote"></span>
+      <label class="rad">Safe zone <input id="radius" type="range" min="10" max="150" step="5" value="40"><output id="radOut">40 m</output></label>
+    </div>
+    <div id="kids"></div>
+  </section>
+
+  <section id="find" hidden>
+    <div class="row" style="justify-content:space-between;flex:none">
+      <button id="back" class="small" style="flex:none">‹ All kids</button>
+      <button id="next" class="small" style="flex:none">Next ›</button>
+    </div>
+    <h2 id="fName"></h2>
+    <svg class="arrow big" id="fArrow" width="200" height="200" viewBox="-50 -50 100 100" aria-hidden="true">
+      <path d="M0 -42 L30 30 L0 14 L-30 30 Z"/>
+    </svg>
+    <div id="fDist"></div>
+    <div id="fDir"></div>
+    <p id="fState"></p>
+  </section>
+
+  <div id="status" class="status" role="status"></div>
+</main>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const PALETTE = ['#FF8FB1', '#7CC6FE', '#C5E063', '#B79CED', '#5FD3B6', '#FFA552'];
+const STALE_MS = 30000;
+const store = {
+  get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} }
+};
+
+let radius = +(store.get('artemis-radius') || 40);
+let me = null, heading = null, ws = null, geoWatch = null, retry = null, lock = null;
+let code = '', demo = false, connected = false, view = 'setup', findId = null;
+const kids = new Map();
+
+/* ---------- helpers ---------- */
+const fmtDist = d => d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km';
+const fmtTime = t => t ? new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'unknown';
+const norm = deg => ((deg % 360) + 540) % 360 - 180; // to -180..180
+const COMPASS = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+function newCode() {
+  const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  return Array.from(crypto.getRandomValues(new Uint8Array(10)), b => A[b % A.length]).join('');
+}
+function setStatus(t) { $('status').textContent = t || ''; }
+
+/* direction to a kid: arrow angle in degrees (0 = up) and words */
+function direction(k) {
+  const bearing = Math.atan2(k.e, k.n) * 180 / Math.PI; // clockwise from north
+  if (heading == null) return { rot: bearing, text: 'To the ' + COMPASS[Math.round((bearing + 360) / 45) % 8] };
+  const rel = norm(bearing - heading), a = Math.abs(rel), side = rel > 0 ? 'right' : 'left';
+  const text = a < 25 ? 'Straight ahead' : a < 70 ? `Ahead, to your ${side}` : a < 115 ? `To your ${side}`
+             : a < 160 ? `Behind you, to the ${side}` : 'Behind you';
+  return { rot: rel, text };
+}
+function problemText(k) {
+  if (k.stale) return `${k.name}: signal lost`;
+  if (k.off) return `${k.name}'s watch may be off`;
+  if (k.outside) return `${k.name} left the zone`;
+  return '';
+}
+
+let actx;
+function unlockAudio() { // iOS only plays sound after a tap
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch {}
+}
+function alertCue() {
+  try {
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+    o.frequency.value = 880;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.5);
+  } catch {}
+  try { navigator.vibrate && navigator.vibrate([150, 80, 150]); } catch {}
+}
+
+/* ---------- kids ---------- */
+function ensureKid(id, name) {
+  let k = kids.get(id);
+  if (k) { if (name) k.name = name; return k; }
+  k = { id, name: name || 'Child', color: PALETTE[kids.size % PALETTE.length], e: 0, n: 0, dist: 0,
+        lat: null, lon: null, battery: null, wrist: null, wristTs: null, ts: Date.now(),
+        hasFix: false, left: false, outside: false, stale: false, off: false, problem: false };
+  kids.set(id, k);
+  return k;
+}
+function toLocal(k) {
+  if (!me || k.lat == null) return;
+  const R = 6371000, d2r = Math.PI / 180;
+  k.n = (k.lat - me.lat) * d2r * R;
+  k.e = (k.lon - me.lon) * d2r * R * Math.cos(me.lat * d2r);
+  k.hasFix = true;
+}
+function updateKids() {
+  const now = Date.now();
+  for (const k of kids.values()) {
+    if (!demo) toLocal(k);
+    k.dist = Math.hypot(k.e, k.n);
+    k.outside = k.hasFix && k.dist > radius;
+    k.stale = k.left || now - k.ts > STALE_MS;
+    k.off = k.wrist === 'off';
+    const problem = k.outside || k.stale || k.off;
+    if (problem && !k.problem) alertCue();
+    k.problem = problem;
+  }
+}
+
+/* ---------- rendering ---------- */
+const ARROW = '<svg class="arrow" width="40" height="40" viewBox="-50 -50 100 100" aria-hidden="true"><path d="M0 -42 L30 30 L0 14 L-30 30 Z"/></svg>';
+function stateText(k) {
+  const p = problemText(k);
+  if (k.stale) return 'Signal lost · last seen ' + Math.round((Date.now() - k.ts) / 1000) + 's ago';
+  if (k.off) return `Watch may be off · last on wrist ${fmtTime(k.wristTs)}`;
+  if (k.outside) return 'Outside the safe zone';
+  if (!k.hasFix) return me ? 'Waiting for their GPS' : 'Waiting for your GPS';
+  return 'Inside the zone' + (k.battery != null ? ` · battery ${k.battery}%` : '');
+}
+function renderList() {
+  const list = [...kids.values()];
+  const box = $('kids');
+  if (!list.length) {
+    box.innerHTML = `<div class="empty">${demo ? 'Starting demo…' : connected ? 'Waiting for kids to join with code <b>' + code + '</b>' : 'Connecting…'}</div>`;
+  } else {
+    // keep one button per kid so focus and taps survive re-renders
+    for (const el of [...box.children]) if (!el.dataset.id || !kids.has(el.dataset.id)) el.remove();
+    for (const k of list) {
+      let el = box.querySelector(`[data-id="${CSS.escape(k.id)}"]`);
+      if (!el) {
+        el = document.createElement('button');
+        el.className = 'kid'; el.dataset.id = k.id;
+        el.innerHTML = `<span class="swatch"></span><span class="who"><span class="name"></span><br><span class="state"></span></span><span class="dist"></span>${ARROW}`;
+        el.onclick = () => openFind(k.id);
+        box.appendChild(el);
+      }
+      const d = k.hasFix ? direction(k) : null;
+      el.classList.toggle('bad', k.problem);
+      el.querySelector('.swatch').style.background = k.stale ? 'var(--line)' : k.color;
+      el.querySelector('.name').textContent = k.name;
+      el.querySelector('.state').textContent = stateText(k);
+      el.querySelector('.dist').textContent = k.hasFix ? fmtDist(k.dist) : '–';
+      const arrow = el.querySelector('.arrow');
+      arrow.classList.toggle('dim', !d || k.stale);
+      arrow.style.transform = `rotate(${d ? d.rot : 0}deg)`;
+      el.setAttribute('aria-label', `${k.name}, ${k.hasFix ? fmtDist(k.dist) + ', ' + d.text : 'no position yet'}. ${stateText(k)}`);
+    }
+  }
+  const bad = list.filter(k => k.problem);
+  $('alert').hidden = !bad.length;
+  if (bad.length) {
+    $('aTitle').textContent = problemText(bad[0]);
+    $('aSub').textContent = bad.length > 1 ? `and ${bad.length - 1} more need${bad.length === 2 ? 's' : ''} attention`
+      : bad[0].hasFix ? fmtDist(bad[0].dist) + ' away' : '';
+    $('aFind').onclick = () => openFind(bad[0].id);
+  }
+  $('headingNote').textContent = heading == null ? 'Arrows: north is up' : 'Arrows follow your phone';
+}
+function renderFind() {
+  const k = kids.get(findId);
+  if (!k) return showView('list');
+  $('fName').textContent = `Finding ${k.name}`;
+  $('next').hidden = kids.size < 2;
+  const d = k.hasFix ? direction(k) : null;
+  const arrow = $('fArrow');
+  arrow.classList.toggle('dim', !d || k.stale);
+  arrow.style.transform = `rotate(${d ? d.rot : 0}deg)`;
+  $('fDist').textContent = k.hasFix ? fmtDist(k.dist) : '–';
+  $('fDir').textContent = d ? (k.stale ? 'Last known position' : d.text) : 'Waiting for GPS';
+  const age = Math.max(0, Math.round((Date.now() - k.ts) / 1000));
+  $('fState').className = k.problem ? 'bad' : '';
+  $('fState').textContent = k.problem ? stateText(k)
+    : (age < 3 ? 'Updated now' : `Updated ${age}s ago`) + (k.battery != null ? ` · battery ${k.battery}%` : '');
+}
+function showView(v) {
+  if (v === 'find' && view !== 'find') history.pushState({ artemis: 'find' }, '');
+  if (v !== 'find' && view === 'find' && history.state && history.state.artemis === 'find') { view = v; history.back(); }
+  view = v;
+  $('setup').hidden = v !== 'setup';
+  $('list').hidden = v !== 'list';
+  $('find').hidden = v !== 'find';
+  $('leave').hidden = v === 'setup';
+  $('compassBtn').hidden = v === 'setup' || heading != null || !('DeviceOrientationEvent' in window);
+  render();
+}
+function openFind(id) { findId = id; showView('find'); }
+addEventListener('popstate', () => { if (view === 'find') { view = 'list'; showView('list'); } });
+$('back').onclick = () => showView('list');
+$('next').onclick = () => {
+  const ids = [...kids.keys()];
+  findId = ids[(ids.indexOf(findId) + 1) % ids.length]; render();
+};
+function render() { if (view === 'list') renderList(); else if (view === 'find') renderFind(); }
+
+/* ---------- compass (iPhone: webkitCompassHeading after permission) ---------- */
+let orientOn = false;
+async function enableCompass() {
+  try {
+    if (window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission) {
+      if (await DeviceOrientationEvent.requestPermission() !== 'granted') return setStatus('Compass permission was declined, so arrows stay north-up.');
+    }
+  } catch { return setStatus('Couldn’t turn on the compass, so arrows stay north-up.'); }
+  if (orientOn) return;
+  orientOn = true;
+  if ('ondeviceorientationabsolute' in window) addEventListener('deviceorientationabsolute', onOrient);
+  addEventListener('deviceorientation', onOrient);
+  setTimeout(() => { if (heading == null) setStatus('No compass reading from this phone, so arrows stay north-up.'); }, 3000);
+}
+function onOrient(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === 'number' && isFinite(e.webkitCompassHeading)) h = e.webkitCompassHeading;
+  else if (e.absolute === true && typeof e.alpha === 'number' && isFinite(e.alpha)) h = (360 - e.alpha) % 360;
+  if (h == null) return;
+  const firstReading = heading == null;
+  heading = h;
+  if (firstReading) { $('compassBtn').hidden = true; setStatus(''); render(); }
+}
+$('compassBtn').onclick = enableCompass;
+
+/* ---------- connection ---------- */
+async function keepAwake() {
+  try { if ('wakeLock' in navigator && document.visibilityState === 'visible') lock = await navigator.wakeLock.request('screen'); } catch {}
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || view === 'setup') return;
+  keepAwake();
+  if (!demo && (!ws || ws.readyState > 1)) openSocket(); // iOS drops sockets in the background
+});
+function startGeo() {
+  if (geoWatch != null) return;
+  geoWatch = navigator.geolocation.watchPosition(
+    p => { me = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy }; },
+    e => setStatus('Your location: ' + e.message + '. Allow location for this site in Settings, then reconnect.'),
+    { enableHighAccuracy: true, maximumAge: 2000 });
+}
+function openSocket() {
+  clearTimeout(retry);
+  if (ws) { ws.onclose = null; ws.close(); }
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  ws.onopen = () => ws.send(JSON.stringify({ type: 'join', role: 'parent', family: code }));
+  ws.onclose = () => {
+    connected = false;
+    if (view === 'setup' || demo) return;
+    setStatus('Connection lost. Retrying…');
+    retry = setTimeout(openSocket, 3000);
+  };
+  ws.onmessage = ev => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.type === 'error') { setStatus(m.error); }
+    if (m.type === 'joined') { connected = true; setStatus(`Connected with code ${code}.`); }
+    if (m.type === 'hello') { const k = ensureKid(m.id, m.name); k.left = false; k.ts = Date.now(); }
+    if (m.type === 'loc') {
+      const k = ensureKid(m.id, m.name);
+      Object.assign(k, { lat: m.lat, lon: m.lon, battery: m.battery ?? null, wrist: m.wrist || null,
+                         wristTs: m.wristTs || null, ts: Date.now(), left: false });
+      toLocal(k);
+    }
+    if (m.type === 'left') { const k = kids.get(m.id); if (k) k.left = true; }
+  };
+}
+function connect() {
+  $('err').textContent = '';
+  const c = $('code').value.trim().toUpperCase();
+  if (!/^[A-Z0-9]{8,16}$/.test(c)) return $('err').textContent = 'Enter a family code of 8–16 letters or numbers, or tap New code.';
+  if (!('geolocation' in navigator)) return $('err').textContent = 'This browser can’t read your location.';
+  unlockAudio();
+  code = c; demo = false; kids.clear(); store.set('artemis-code', code);
+  history.replaceState(null, '', '?family=' + code);
+  startGeo(); openSocket(); keepAwake();
+  showView('list');
+}
+function disconnect() {
+  clearTimeout(retry);
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  if (geoWatch != null) { navigator.geolocation.clearWatch(geoWatch); geoWatch = null; }
+  try { lock && lock.release(); } catch {}
+  connected = false; demo = false; kids.clear(); setStatus('');
+  showView('setup');
+}
+$('connect').onclick = connect;
+$('code').addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
+$('gen').onclick = () => { $('code').value = newCode(); };
+$('leave').onclick = disconnect;
+
+/* ---------- demo: three pretend kids around you, no GPS or server needed ---------- */
+function startDemo() {
+  unlockAudio();
+  disconnect(); demo = true;
+  [['Maya', 8, 5], ['Leo', -7, 12], ['Ava', 4, -10]].forEach(([name, e, n], i) => {
+    Object.assign(ensureKid('demo' + i, name), { e, n, hasFix: true, hd: Math.random() * 6.28, sp: 0.7 + Math.random() * 0.6,
+      battery: 55 + (Math.random() * 45 | 0), wander: i === 1, removes: i === 2, clock: 0 });
+  });
+  setStatus('Demo: Leo wanders out of the zone; Ava takes her watch off now and then.');
+  showView('list');
+}
+function stepDemo(dt) {
+  for (const k of kids.values()) {
+    k.ts = Date.now();
+    if (k.removes) {
+      k.clock += dt;
+      const off = k.clock % 90 > 60;
+      if (off && k.wrist !== 'off') k.wristTs = Date.now();
+      k.wrist = off ? 'off' : 'on';
+      if (off) continue;
+    }
+    k.hd += (Math.random() - 0.5) * dt * 1.6;
+    const lim = k.wander ? radius * 1.5 : radius * 0.8;
+    if (Math.hypot(k.e, k.n) > lim) k.hd += Math.atan2(Math.sin(Math.atan2(-k.e, -k.n) - k.hd), Math.cos(Math.atan2(-k.e, -k.n) - k.hd)) * dt * 0.9;
+    k.e += Math.sin(k.hd) * k.sp * dt;
+    k.n += Math.cos(k.hd) * k.sp * dt;
+  }
+}
+$('demo').onclick = startDemo;
+
+/* ---------- controls and loop ---------- */
+$('radius').value = radius; $('radOut').textContent = radius + ' m';
+$('radius').oninput = e => { radius = +e.target.value; $('radOut').textContent = radius + ' m'; store.set('artemis-radius', radius); render(); };
+$('childLink').textContent = location.origin + '/child.html';
+
+let last = performance.now();
+setInterval(() => {
+  const now = performance.now(), dt = Math.min(1, (now - last) / 1000); last = now;
+  if (demo) stepDemo(dt);
+  if (view !== 'setup') { updateKids(); render(); }
+}, 250);
+
+const params = new URLSearchParams(location.search);
+$('code').value = (params.get('family') || store.get('artemis-code') || '').toUpperCase();
+if (params.get('demo') === '1') startDemo();
+</script>
+</body>
+</html>

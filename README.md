@@ -35,6 +35,10 @@ Headsets and phones only allow location and WebXR on **HTTPS**. For real use eit
 
 **Demo** mode needs no server or phones and simulates three kids.
 
+## Phone view (`/phone.html`)
+
+The parent view for an iPhone or Android phone, with no glasses needed. Open `https://<your-host>/phone.html`, enter the family code (or tap **New code**), and tap **Connect**. Each kid shows with distance, an arrow, battery, and status; a banner, chime, and vibration flag a kid who leaves the safe zone, loses signal, or takes their watch off. Tap a kid for a big Find arrow. Tap **Compass** to make the arrows follow the way the phone points; otherwise north is up. Keep the page open with the screen on. **Try a demo** shows three pretend kids without a server or GPS.
+
 ## Glasses view (`/glasses.html`)
 
 Previews Artemis on Meta's display glasses, in a simulated park or in a Quest headset.
