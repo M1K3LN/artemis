@@ -20,7 +20,7 @@
 body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:"Atkinson Hyperlegible",system-ui,sans-serif;font-size:17px;line-height:1.45}
 main{max-width:480px;margin:0 auto;padding:20px 16px 32px}
 h1{font-size:26px;margin:0}
-.top{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:14px}
 .top .spacer{flex:1}
 .sub{color:var(--muted);margin:4px 0 20px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;display:grid;gap:14px}
@@ -29,7 +29,7 @@ input{font:inherit;color:inherit;background:transparent;border:1px solid var(--l
 #code{text-transform:uppercase;letter-spacing:.08em}
 button{font:inherit;border-radius:12px;padding:12px 14px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer}
 button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
-button.small{padding:7px 11px;font-size:15px}
+button.small{padding:7px 11px;font-size:15px;white-space:nowrap}
 button:focus-visible,input:focus-visible,.kid:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .row{display:flex;gap:10px}
 .row>*{flex:1}
@@ -42,6 +42,7 @@ button:focus-visible,input:focus-visible,.kid:focus-visible{outline:2px solid va
 #alert b{display:block;font-size:19px}
 #alert .grow{flex:1}
 .meta{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:15px;margin:2px 2px 10px;gap:8px;flex-wrap:wrap}
+#headingNote.warn{color:var(--bad);font-weight:700}
 .rad{display:flex;align-items:center;gap:8px}
 .rad input{width:110px;padding:0;accent-color:var(--accent)}
 #kids{display:grid;gap:10px}
@@ -76,8 +77,8 @@ button:focus-visible,input:focus-visible,.kid:focus-visible{outline:2px solid va
   <div class="top">
     <h1>Artemis</h1>
     <span class="spacer"></span>
-    <button id="compassBtn" class="small" hidden>Compass</button>
-    <button id="leave" class="small" hidden>Disconnect</button>
+    <button id="compassBtn" class="small" hidden>Turn on compass</button>
+    <button id="leave" class="small" hidden>Exit</button>
   </div>
 
   <section id="setup">
@@ -261,7 +262,8 @@ function renderList() {
       : bad[0].hasFix ? fmtDist(bad[0].dist) + ' away' : '';
     $('aFind').onclick = () => openFind(bad[0].id);
   }
-  $('headingNote').textContent = heading == null ? 'Arrows: north is up' : 'Arrows follow your phone';
+  $('headingNote').textContent = heading == null ? 'Compass off: arrows point north, not where you face' : 'Arrows follow your phone';
+  $('headingNote').className = heading == null ? 'warn' : '';
 }
 function renderFind() {
   const k = kids.get(findId);
@@ -370,7 +372,7 @@ function connect() {
   const c = $('code').value.trim().toUpperCase();
   if (!/^[A-Z0-9]{8,16}$/.test(c)) return $('err').textContent = 'Enter a family code of 8–16 letters or numbers, or tap New code.';
   if (!('geolocation' in navigator)) return $('err').textContent = 'This browser can’t read your location.';
-  unlockAudio();
+  unlockAudio(); enableCompass();
   code = c; demo = false; kids.clear(); store.set('artemis-code', code);
   history.replaceState(null, '', '?family=' + code);
   startGeo(); openSocket(); keepAwake();
@@ -391,7 +393,7 @@ $('leave').onclick = disconnect;
 
 /* ---------- demo: three pretend kids around you, no GPS or server needed ---------- */
 function startDemo() {
-  unlockAudio();
+  unlockAudio(); enableCompass();
   disconnect(); demo = true;
   [['Maya', 8, 5], ['Leo', -7, 12], ['Ava', 4, -10]].forEach(([name, e, n], i) => {
     Object.assign(ensureKid('demo' + i, name), { e, n, hasFix: true, hd: Math.random() * 6.28, sp: 0.7 + Math.random() * 0.6,
