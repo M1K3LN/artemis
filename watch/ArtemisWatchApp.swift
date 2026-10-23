@@ -2,7 +2,7 @@
 // and flags when the watch has probably been taken off.
 //
 // Setup (Xcode): new watchOS App target, paste this file, then
-//   1. Set serverURL below to your server's public HTTPS address.
+//   1. serverURL below points at the Render deployment; change it only if the server moves.
 //   2. Info: add
 //        NSLocationWhenInUseUsageDescription  "Shares where you are with your parent while you're out together."
 //        NSHealthShareUsageDescription        "Checks whether your watch is still on your wrist. Heart rate never leaves the watch."
@@ -58,7 +58,7 @@ struct ContentView: View {
 
 final class LocationSharer: NSObject, ObservableObject, CLLocationManagerDelegate,
                             HKWorkoutSessionDelegate, HKLiveWorkoutBuilderDelegate {
-    static let serverURL = URL(string: "https://YOUR-SERVER.example.com/api/loc")!
+    static let serverURL = URL(string: "https://artemis-gqvn.onrender.com/api/loc")!
     static let interval: TimeInterval = 15        // parent display flags "signal lost" after 30 s
     static let offWristAfter: TimeInterval = 60   // no heart rate and no movement for this long = "off"
 

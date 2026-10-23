@@ -14,7 +14,7 @@ This file brings a new Claude Code session up to speed. The project was built in
 
 - 3 Apple Watches (cellular) worn by the kids
 - Meta Ray-Ban Display glasses with the Neural Band, worn by the parent; they're paired to his iPhone, which supplies GPS
-- A Mac running the server, Xcode, and a Cloudflare tunnel
+- A Mac running Xcode (the server is hosted on Render; see Running it)
 
 ## Architecture
 
@@ -62,20 +62,20 @@ child.html (phone) ──WebSocket───────────────�
 ### Watch app (`ArtemisWatchApp.swift`)
 - Sends a POST every 15 s using CoreLocation with background location updates. Includes battery level.
 - **Watch-off check:** keeps a running HKWorkoutSession only to get frequent heart-rate samples, plus the CoreMotion accelerometer. If there's no heart-rate sample and no movement for 60 s, it reports `wrist:'off'`. **Heart-rate values never leave the watch**; only on/off and the last time it was confirmed on the wrist are sent. The workout is discarded on stop and nothing is saved to Health.
-- **Setup:** Info keys `NSLocationWhenInUseUsageDescription`, `NSHealthShareUsageDescription`, `NSHealthUpdateUsageDescription`. Capabilities: HealthKit, and Background Modes with Location updates and Workout processing. Set `serverURL` to `https://<tunnel>/api/loc`.
+- **Setup:** Info keys `NSLocationWhenInUseUsageDescription`, `NSHealthShareUsageDescription`, `NSHealthUpdateUsageDescription`. Capabilities: HealthKit, and Background Modes with Location updates and Workout processing. `serverURL` is set to `https://artemis-gqvn.onrender.com/api/loc`.
 - **Risk:** App Review may reject a workout session used this way. That's fine for testing.
 
 ## Running it
-**Hosted (default for testing):** the GitHub repo `M1K3LN/artemis` (private, personal account) deploys to Render's free tier via `render.yaml` and redeploys on every push to `main`. The URL is fixed, so the watch `serverURL` and the glasses install don't change. The free tier sleeps after 15 min with no traffic and takes about a minute to wake.
+**Hosted (default for testing):** the GitHub repo `M1K3LN/artemis` (private, personal account) deploys to Render's free tier via `render.yaml` and redeploys on every push to `main`. The URL is fixed (`https://artemis-gqvn.onrender.com`), so the watch `serverURL` and the glasses install don't change. The free tier sleeps after 15 min with no traffic and takes about a minute to wake.
 
 **Local (fallback):**
 ```bash
 npm install && npm start                          # http://localhost:8080
 cloudflared tunnel --url http://localhost:8080   # gives the public HTTPS URL
 ```
-- Ray-Ban Display needs Meta AI app v272+ and glasses software v125+. Turn on Developer Mode: in the Meta AI app, Settings → App Info, tap the version number five times. Install from `https://<tunnel>/install.html` by scanning the QR code with the glasses, or add the URL under Web Apps in the Meta AI app. HTTPS is required.
+- Ray-Ban Display needs Meta AI app v272+ and glasses software v125+. Turn on Developer Mode: in the Meta AI app, Settings → App Info, tap the version number five times. Install from `https://artemis-gqvn.onrender.com/install.html` by scanning the QR code with the glasses, or add the URL under Web Apps in the Meta AI app. HTTPS is required.
 - **Watches:** create an Xcode project (watchOS → App → Watch-only, SwiftUI) named Artemis, replace the generated files with `ArtemisWatchApp.swift`, and add the capabilities and Info keys. Build in the Watch simulator first, then on each watch via its paired iPhone, with Developer Mode on for both.
-- **The free tunnel URL changes on every restart.** When it does, rebuild the watch app with the new `serverURL` and reinstall the glasses web app. Keep the tunnel running for the whole test.
+- **Local fallback only:** the free tunnel URL changes on every restart. When it does, rebuild the watch app with the new `serverURL` and reinstall the glasses web app. Keep the tunnel running for the whole test.
 
 ## Status
 
@@ -118,7 +118,6 @@ Offered but not built: a test-log mode that records displayed versus actual dist
 - **Kid tag combining 4G GPS and UWB** (prototype: Nordic nRF91 plus Qorvo DWM3001C). 4G handles distance; UWB gives about a foot of accuracy within roughly 30–50 m.
 - **Native parent iPhone app.** It would combine UWB via Apple's Nearby Interaction framework with server GPS and drive the glasses through Meta's Wearables Device Access Toolkit (native SDK). Web apps can't use UWB. Open question: UWB direction is relative to the phone, not the head.
 - **Cheaper alternative to watches:** 4G GPS trackers that speak the GT06 or OsmAnd protocol (about $25–60 plus a $3–10/month SIM), with dual-frequency L1/L5 for better accuracy. This needs a protocol adapter on the server, or Traccar in front of it.
-- **Permanent hosting:** move `server.js` to Render or Railway with a fixed URL, connected to a personal GitHub repo.
 - **2027 Meta AR glasses:** the "AR glasses" profile in `glasses.html` is a design study for world-locked markers.
 
 ## Reference
